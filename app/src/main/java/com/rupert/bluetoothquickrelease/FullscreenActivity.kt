@@ -38,21 +38,21 @@ class FullscreenActivity() : AppCompatActivity() {
         lv_Devices_selected = findViewById<ListView>(R.id.listView_selected)
 
 
-        lv_Devices_selected.setOnItemLongClickListener(AdapterView.OnItemLongClickListener() { parent, view, position, id ->
+        lv_Devices_selected.setOnItemClickListener(AdapterView.OnItemClickListener() { parent, view, position, id ->
             bluetoothDevices.add(bluetoothDevices_selected.get(position))
             bluetoothDevices_selected.removeAt(position)
 
             renderBluetoothDevices()
-            return@OnItemLongClickListener true
+            //  return@OnItemClickListener true
         })
 
-        lv_Devices.setOnItemLongClickListener(AdapterView.OnItemLongClickListener() { parent, view, position, id ->
+        lv_Devices.setOnItemClickListener(AdapterView.OnItemClickListener() { parent, view, position, id ->
 
             bluetoothDevices_selected.add(bluetoothDevices.get(position))
             bluetoothDevices.removeAt(position)
 
             renderBluetoothDevices()
-            return@OnItemLongClickListener true
+            //  return@OnItemClickListener true
         })
 // AdapterView<?> parent, View view, int position, long id
 //        lv_Devices.setOnItemClickListener(AdapterView.OnItemClickListener() { parent, view, position, id ->
