@@ -1,68 +1,102 @@
 package com.rupert.bluetoothquickrelease
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.content.pm.PackageManager.PERMISSION_GRANTED
-import android.os.*
-import android.view.View
+import android.os.Build
+import android.os.Bundle
+import android.util.Log
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import java.security.Permission
+
 
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
  * status bar and navigation/system bar) with user interaction.
  */
 class FullscreenActivity() : AppCompatActivity() {
+    private val SHARED_PREFERENCES: String = "SHARED_PREFERENCES"
+    private val SAVE_TEST: String = "SAVE_TEST"
+    private val SAVE_SELECTED_DEVICES: String = "SAVE_SELECTED_DEVICES"
+    private val MAX_SELECTED_DEVICES: Int = 3
     private lateinit var btn_Scan: Button
     private lateinit var lv_Devices: ListView
     private lateinit var lv_Devices_selected: ListView
 
+    private var cToast: Toast? = null
+
     private var bluetoothDevices: MutableList<BluetoothDevice> = mutableListOf()
     private var bluetoothDevices_selected: MutableList<BluetoothDevice> = mutableListOf()
+    private lateinit var SharedPref: SharedPreferences
+
+    private fun getSelectedDevicesMACList(): Set<String>? =
+        bluetoothDevices_selected.map { cd -> cd.address }.toSet()
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_fullscreen)
+        try {
 
-        btn_Scan = findViewById(R.id.buttonScan)
-        lv_Devices = findViewById<ListView>(R.id.listView)
-        lv_Devices_selected = findViewById<ListView>(R.id.listView_selected)
+            super.onCreate(savedInstanceState)
+            SharedPref = getSharedPreferences(SHARED_PREFERENCES, MODE_PRIVATE)
+
+            setContentView(R.layout.activity_fullscreen)
+
+            btn_Scan = findViewById(R.id.buttonScan)
+            lv_Devices = findViewById<ListView>(R.id.listView)
+            lv_Devices_selected = findViewById<ListView>(R.id.listView_selected)
 
 
-        lv_Devices_selected.setOnItemClickListener(AdapterView.OnItemClickListener() { parent, view, position, id ->
-            bluetoothDevices.add(bluetoothDevices_selected.get(position))
-            bluetoothDevices_selected.removeAt(position)
+            lv_Devices_selected.setOnItemClickListener(AdapterView.OnItemClickListener() { parent, view, position, id ->
+                bluetoothDevices.add(bluetoothDevices_selected.get(position))
+                bluetoothDevices_selected.removeAt(position)
 
-            renderBluetoothDevices()
-            //  return@OnItemClickListener true
-        })
+                renderBluetoothDevices()
 
-        lv_Devices.setOnItemClickListener(AdapterView.OnItemClickListener() { parent, view, position, id ->
+                Store(SAVE_SELECTED_DEVICES, getSelectedDevicesMACList())
+                //  return@OnItemClickListener true
+            })
 
-            bluetoothDevices_selected.add(bluetoothDevices.get(position))
-            bluetoothDevices.removeAt(position)
 
-            renderBluetoothDevices()
-            //  return@OnItemClickListener true
-        })
-// AdapterView<?> parent, View view, int position, long id
-//        lv_Devices.setOnItemClickListener(AdapterView.OnItemClickListener() { parent, view, position, id ->
-//            Toast.makeText(this, "Clicked item : $position", Toast.LENGTH_SHORT).show()
-        //      })
-        btn_Scan.setOnClickListener { scan() }
+
+            lv_Devices.setOnItemClickListener(AdapterView.OnItemClickListener() { parent, view, position, id ->
+
+                if (bluetoothDevices_selected.size < MAX_SELECTED_DEVICES) {
+                    bluetoothDevices_selected.add(bluetoothDevices.get(position))
+                    bluetoothDevices.removeAt(position)
+
+                    renderBluetoothDevices()
+                    Store(SAVE_SELECTED_DEVICES, getSelectedDevicesMACList())
+                } else {
+                    cToast?.cancel()
+
+                    cToast = Toast.makeText(
+                        baseContext,
+                        "You have reached a max of $MAX_SELECTED_DEVICES devices",
+                        Toast.LENGTH_SHORT
+                    )
+
+                    cToast!!.show()
+                }
+                //  return@OnItemClickListener true
+            })
+
+            btn_Scan.setOnClickListener { scan() }
+
+            scan(reStore(SAVE_SELECTED_DEVICES, emptySet()))
+        } catch (e: Exception) {
+            Log.e("Exception", e.toString())
+        }
     }
 
 
-    private fun scan() {
+    private fun scan(restoredDevices: Set<String>? = null) {
         if (!this.hasAllPermissions()) {
             this.requestPermissions(baseContext, this);
             btn_Scan.setText(R.string.btn_scan_retry)
@@ -71,14 +105,22 @@ class FullscreenActivity() : AppCompatActivity() {
 
         if (this.supportsBluetooth()) {
             this.enableBluetooth()
-            bluetoothAdapter?.bondedDevices?.forEach { bluetoothDevice ->
+            bluetoothAdapter?.bondedDevices?.forEach ble@{ bluetoothDevice ->
+                if (restoredDevices?.contains(bluetoothDevice.address) == true) {
+                    bluetoothDevices_selected.add(bluetoothDevice)
+
+                    return@ble
+                }
+
                 if (!bluetoothDevices.contains(bluetoothDevice) && !bluetoothDevices_selected.contains(
                         bluetoothDevice
                     )
                 ) {
                     bluetoothDevices.add(bluetoothDevice)
                 }
+
             }
+
             renderBluetoothDevices()
         } else {
             btn_Scan.setText(R.string.btn_not_supportet)
@@ -147,7 +189,10 @@ class FullscreenActivity() : AppCompatActivity() {
     }
 
     private fun hasPermissionGranted(pPermission: String): Boolean =
-        ContextCompat.checkSelfPermission(baseContext, pPermission) == PERMISSION_GRANTED
+        ContextCompat.checkSelfPermission(
+            baseContext,
+            pPermission
+        ) == PackageManager.PERMISSION_GRANTED
 
     override fun onActivityResult(
         requestCode: Int,
@@ -164,6 +209,27 @@ class FullscreenActivity() : AppCompatActivity() {
         }
     }
 
+
+    private inline fun <reified T> Store(KEY: String, Val: T) {
+        when (T::class.java) {
+            String::class.java -> SharedPref.edit().putString(KEY, Val as String).apply()
+            Set::class.java -> { // TODO auch Set<T> checken... nicht nur T<>
+                SharedPref.edit().putStringSet(KEY, Val as Set<String>).apply()
+            }
+            else -> throw Exception("Unhandled return type")
+        }
+    }
+
+    private inline fun <reified T> reStore(KEY: String, defaultVal: T? = null): T {
+        return when (T::class.java) {
+            String::class.java -> SharedPref.getString(KEY, defaultVal?.toString()) as T
+            Set::class.java -> SharedPref.getStringSet(
+                KEY,
+                defaultVal as Set<String>
+            ) as T
+            else -> throw Exception("Unhandled return type")
+        }
+    }
 
     companion object {
         var Intent_REQUEST_ENABLE_BT: Int = 1
