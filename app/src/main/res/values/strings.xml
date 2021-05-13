@@ -4,4 +4,5 @@
     <string name="btn_not_supportet">Bluetooth isn\'t supported</string>
     <string name="app_name">bluetoothQuickRelease</string>
     <string name="Selected">selected devices</string>
+    <string name="quicksettingLabel">disconnect</string>
 </resources>

@@ -3,10 +3,8 @@ package com.rupert.bluetoothquickrelease
 import android.Manifest
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -27,13 +25,9 @@ class FullscreenActivity() : AppCompatActivity() {
     private lateinit var lvDevices: ListView
     private lateinit var lvDevicesSelected: ListView
     private lateinit var storage: Storage
+    private lateinit var bluetooth: Bluetooth
 
     private var toast: Toast? = null
-    private var bluetoothDevices: MutableList<BluetoothDevice> = mutableListOf()
-    private var bluetoothDevicesSelected: MutableList<BluetoothDevice> = mutableListOf()
-
-    private fun getSelectedDevicesMACList(): Set<String>? =
-        bluetoothDevicesSelected.map { cd -> cd.address }.toSet()
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,6 +35,7 @@ class FullscreenActivity() : AppCompatActivity() {
             super.onCreate(savedInstanceState)
             setContentView(R.layout.activity_fullscreen)
             storage = Storage(getSharedPreferences(SHARED_PREFERENCES, MODE_PRIVATE))
+            bluetooth = Bluetooth()
 
             btnScan = findViewById(R.id.buttonScan)
             lvDevices = findViewById(R.id.listView)
@@ -49,89 +44,77 @@ class FullscreenActivity() : AppCompatActivity() {
             lvDevices.onItemClickListener = onBluetoothDeviceClick
             btnScan.setOnClickListener(onBtnScanClick)
 
-            scan(storage.reStore(SAVE_SELECTED_DEVICES, emptySet()))
+            progressBluetoothScanResult(
+                bluetooth.scan(
+                    baseContext,
+                    this,
+                    storage.reStore(SAVE_SELECTED_DEVICES, emptySet())
+                )
+            )
+
+            renderBluetoothDevices()
         } catch (e: Exception) {
             Log.e("Exception", e.toString())
         }
     }
 
+    private fun progressBluetoothScanResult(result: ScanReturn) {
+
+        when (result) {
+
+            ScanReturn.ERROR_PERMISSION -> btnScan.setText(R.string.btn_scan_retry)
+
+            ScanReturn.ERROR_DEVICE_NOT_SUPPORTED -> btnScan.setText(R.string.btn_not_supportet)
+            // ScanReturn.SUCCESS -> throw NotImplementedError("ScanReturn.SUCCESS not Supportet yet")
+        }
+
+    }
+
     private val onBtnScanClick = View.OnClickListener {
-        scan()
+        progressBluetoothScanResult(
+            bluetooth.scan(baseContext, this)
+        )
     }
 
     private val onBluetoothDeviceClick =
         AdapterView.OnItemClickListener { parent, view, position, id ->
-            addBluetoothDevice(bluetoothDevicesSelected[position], true)
+            addBluetoothDevice(position, true)
         }
 
     private val onBluetoothDeviceSelectedClick =
         AdapterView.OnItemClickListener { parent, view, position, id ->
-            addBluetoothDevice(bluetoothDevicesSelected[position])
+            addBluetoothDevice(position)
         }
 
 
-    private fun addBluetoothDevice(bd: BluetoothDevice, selected: Boolean = false) {
-        if (selected && bluetoothDevicesSelected.size < MAX_SELECTED_DEVICES) {
-            if (!bluetoothDevicesSelected.contains(bd)) {
-                bluetoothDevicesSelected.add(bd)
-                if (bluetoothDevices.contains(bd)) {
-                    bluetoothDevices.remove(bd)
-                }
-            }
-        } else {
-            if (selected && bluetoothDevicesSelected.size >= MAX_SELECTED_DEVICES) {
-                toast?.cancel()
-                toast = Toast.makeText(
-                    baseContext,
-                    "You have reached a max of ${MAX_SELECTED_DEVICES} devices",
-                    Toast.LENGTH_SHORT
-                )
-                toast!!.show()
-            }
-            if (!bluetoothDevices.contains(bd)) {
-                bluetoothDevices.add(bd)
-                if (bluetoothDevicesSelected.contains(bd)) {
-                    bluetoothDevicesSelected.remove(bd)
-                }
-            }
+    private fun addBluetoothDevice(position: Int, selected: Boolean = false) {
+        val result = bluetooth.addBluetoothDevice(position, selected)
+
+        if (result == false) {
+            toast?.cancel()
+            toast = Toast.makeText(
+                baseContext,
+                "You have reached a max of ${FullscreenActivity.MAX_SELECTED_DEVICES} devices",
+                Toast.LENGTH_SHORT
+            )
+            toast!!.show()
         }
 
         renderBluetoothDevices()
-        storage.store(SAVE_SELECTED_DEVICES, getSelectedDevicesMACList())
-    }
-
-    private fun scan(restoredDevices: Set<String>? = null) {
-        if (!this.hasAllPermissions()) {
-            this.requestPermissions(baseContext, this);
-            btnScan.setText(R.string.btn_scan_retry)
-            return;
-        }
-
-        if (this.supportsBluetooth()) {
-            this.enableBluetooth()
-            bluetoothAdapter?.bondedDevices?.forEach ble@{ bluetoothDevice ->
-                if (restoredDevices?.contains(bluetoothDevice.address) == true) {
-                    addBluetoothDevice(bluetoothDevice, true)
-                    return@ble
-                }
-                addBluetoothDevice(bluetoothDevice)
-            }
-        } else {
-            btnScan.setText(R.string.btn_not_supportet)
-        }
+        storage.store(SAVE_SELECTED_DEVICES, bluetooth.getSelectedDevicesMACList())
     }
 
     private fun renderBluetoothDevices() {
-        val listItems = arrayOfNulls<String>(bluetoothDevices.size)
-        val listItemsSelected = arrayOfNulls<String>(bluetoothDevicesSelected.size)
+        val listItems = arrayOfNulls<String>(bluetooth.bluetoothDevices.size)
+        val listItemsSelected = arrayOfNulls<String>(bluetooth.bluetoothDevicesSelected.size)
 
-        for (i in 0 until bluetoothDevices.size) {
-            val cDevice = bluetoothDevices[i]
+        for (i in 0 until bluetooth.bluetoothDevices.size) {
+            val cDevice = bluetooth.bluetoothDevices[i]
             listItems[i] = cDevice.name
         }
 
-        for (i in 0 until bluetoothDevicesSelected.size) {
-            val cDevice = bluetoothDevicesSelected[i]
+        for (i in 0 until bluetooth.bluetoothDevicesSelected.size) {
+            val cDevice = bluetooth.bluetoothDevicesSelected[i]
             listItemsSelected[i] = cDevice.name
         }
 
@@ -140,33 +123,6 @@ class FullscreenActivity() : AppCompatActivity() {
             ArrayAdapter(this, android.R.layout.simple_list_item_1, listItemsSelected)
     }
 
-    private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
-
-    private fun hasAllPermissions(): Boolean =
-        permissions().any { cPermission -> !hasPermissionGranted(cPermission) }
-
-    private fun supportsBluetooth() = (bluetoothAdapter != null)
-
-    private fun enableBluetooth() {
-        val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-        ActivityCompat.startActivityForResult(
-            this, enableBtIntent,
-            Intent_REQUEST_ENABLE_BT, null
-        )
-    }
-
-    private fun requestPermissions(baseContext: Context, activity: Activity) {
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (!hasPermissionGranted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
-                ActivityCompat.requestPermissions(
-                    activity,
-                    permissions(),
-                    Permission_ACCESS_BACKGROUND_LOCATION
-                )
-            }
-        }
-    }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -185,12 +141,6 @@ class FullscreenActivity() : AppCompatActivity() {
         }
     }
 
-    private fun hasPermissionGranted(pPermission: String): Boolean =
-        ContextCompat.checkSelfPermission(
-            baseContext,
-            pPermission
-        ) == PackageManager.PERMISSION_GRANTED
-
     override fun onActivityResult(
         requestCode: Int,
         resultCode: Int,
@@ -206,14 +156,11 @@ class FullscreenActivity() : AppCompatActivity() {
         }
     }
 
-    private fun permissions(): Array<String> =
-        arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-
     companion object {
-        private const val SHARED_PREFERENCES: String = "SHARED_PREFERENCES"
-        private const val SAVE_SELECTED_DEVICES: String = "SAVE_SELECTED_DEVICES"
-        private const val MAX_SELECTED_DEVICES: Int = 3
-        private const val Intent_REQUEST_ENABLE_BT: Int = 1
-        private const val Permission_ACCESS_BACKGROUND_LOCATION: Int = 2
+        const val SHARED_PREFERENCES: String = "SHARED_PREFERENCES"
+        const val SAVE_SELECTED_DEVICES: String = "SAVE_SELECTED_DEVICES"
+        const val MAX_SELECTED_DEVICES: Int = 3
+        const val Intent_REQUEST_ENABLE_BT: Int = 1
+        const val Permission_ACCESS_BACKGROUND_LOCATION: Int = 2
     }
 }
