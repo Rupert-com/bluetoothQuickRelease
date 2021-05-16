@@ -29,8 +29,6 @@ class Quicksetting : TileService(), Loggable {
 
 
     override fun onClick() {
-        toast("Click")
-
         storage = Storage(
             getSharedPreferences(
                 FullscreenActivity.SHARED_PREFERENCES, MODE_PRIVATE

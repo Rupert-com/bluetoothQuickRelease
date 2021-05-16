@@ -138,8 +138,6 @@ class FullscreenActivity() : AppCompatActivity() {
             Permission_ACCESS_BACKGROUND_LOCATION -> {
                 for ((cCount, permission) in permissions.withIndex()) {
                     if (grantResults[cCount] == PackageManager.PERMISSION_GRANTED) {
-
-                        // Permission Granted
                     }
                 }
             }
