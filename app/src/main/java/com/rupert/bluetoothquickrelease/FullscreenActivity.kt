@@ -61,11 +61,10 @@ class FullscreenActivity() : AppCompatActivity() {
     private fun progressBluetoothScanResult(result: ScanReturn) {
 
         when (result) {
-
             ScanReturn.ERROR_PERMISSION -> btnScan.setText(R.string.btn_scan_retry)
-
             ScanReturn.ERROR_DEVICE_NOT_SUPPORTED -> btnScan.setText(R.string.btn_not_supportet)
-            // ScanReturn.SUCCESS -> throw NotImplementedError("ScanReturn.SUCCESS not Supportet yet")
+            ScanReturn.SUCCESS -> return
+            else -> throw NotImplementedError("ScanReturn.SUCCESS not Supportet yet")
         }
 
     }
@@ -74,6 +73,12 @@ class FullscreenActivity() : AppCompatActivity() {
         progressBluetoothScanResult(
             bluetooth.scan(baseContext, this)
         )
+
+        // bluetooth.disconnectSelectedConnectedBluetoothDevices(this)
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private val onBluetoothDeviceClick =
@@ -101,7 +106,7 @@ class FullscreenActivity() : AppCompatActivity() {
         }
 
         renderBluetoothDevices()
-        storage.store(SAVE_SELECTED_DEVICES, bluetooth.getSelectedDevicesMACList())
+        storage.store(SAVE_SELECTED_DEVICES, bluetooth.getSelectedDevicesMAC())
     }
 
     private fun renderBluetoothDevices() {

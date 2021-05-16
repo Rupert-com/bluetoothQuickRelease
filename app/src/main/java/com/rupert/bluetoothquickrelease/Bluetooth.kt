@@ -7,20 +7,34 @@ import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothProfile.ServiceListener
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.system.Os.socket
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
+import com.rupert.util.Loggable
+import com.rupert.util.error
+import com.rupert.util.info
+import java.util.*
 
 
-class Bluetooth : Permission() {
+class Bluetooth : Permission(), Loggable {
     var bluetoothDevices: MutableList<BluetoothDevice> = mutableListOf()
     var bluetoothDevicesSelected: MutableList<BluetoothDevice> = mutableListOf()
 
 
-    fun getSelectedDevicesMACList(): Set<String>? =
+    fun getSelectedDevicesMAC(): Set<String> =
         bluetoothDevicesSelected.map { cd -> cd.address }.toSet()
+
+    fun getSelectedConnectedDevicesName(): Set<String> =
+        getSelectedConnectedDevices().map { cd -> cd.name }.toSet()
+
+    fun getSelectedConnectedDevices(): List<BluetoothDevice> =
+        bluetoothDevicesSelected.filter { bluetoothDevice ->
+            val cMethod = bluetoothDevice::class.java.getMethod("isConnected")
+            return@filter cMethod.invoke(bluetoothDevice) as Boolean
+        }
 
     /**
      * @return
@@ -79,7 +93,10 @@ class Bluetooth : Permission() {
             if (activity != null)
                 this.enableBluetooth(activity)
             bluetoothAdapter?.bondedDevices?.forEach ble@{ bluetoothDevice ->
-                if (restoredDevices?.contains(bluetoothDevice.address) == true) {
+                if (restoredDevices?.contains(bluetoothDevice.address) == true || bluetoothDevicesSelected.contains(
+                        bluetoothDevice
+                    )
+                ) {
                     addBluetoothDevice(bluetoothDevice, true)
                     return@ble
                 }
@@ -92,31 +109,48 @@ class Bluetooth : Permission() {
     }
 
     fun disconnectSelectedConnectedBluetoothDevices(context: Context) {
-        bluetoothDevicesSelected.forEach { bluetoothDevice ->
+        getSelectedConnectedDevices().forEach { bluetoothDevice ->
             if (bluetoothDevice.bondState == BluetoothDevice.BOND_BONDED) {
                 disconnect(context, bluetoothDevice)
+
+                Toast.makeText(context, "disconnect:" + bluetoothDevice.name, Toast.LENGTH_SHORT)
+                    .show()
+            } else {
+                Toast.makeText(
+                    context,
+                    "not disconnected:" + bluetoothDevice.name,
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
 
-    private fun disconnect(context: Context, device: BluetoothDevice) {
-        val serviceListener: BluetoothProfile.ServiceListener = object :
-            BluetoothProfile.ServiceListener {
-            override fun onServiceDisconnected(profile: Int) {}
 
-            @SuppressLint("DiscouragedPrivateApi")
+    // https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/bluetooth/BluetoothA2dp.java
+    private fun disconnect(context: Context, device: BluetoothDevice) {
+        val serviceListener: ServiceListener = object : ServiceListener {
             override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-                val disconnect = BluetoothA2dp::class.java.getDeclaredMethod(
-                    "disconnect",
-                    BluetoothDevice::class.java
-                )
-                disconnect.isAccessible = true
-                disconnect.invoke(proxy, device)
-                BluetoothAdapter.getDefaultAdapter().closeProfileProxy(profile, proxy)
+                try {
+                    val disconnectMethod =
+                        BluetoothA2dp::class.java.getDeclaredMethod(
+                            "disconnect",
+                            BluetoothDevice::class.java
+                        )
+                    // TODO was macht diese Accessible genau?
+                    disconnectMethod.isAccessible = true
+                    val cReturn = disconnectMethod.invoke(proxy, device) as Boolean
+
+                    info("cReturn $cReturn")
+                } catch (ex: Throwable) {
+                    error("disconnectMethod", ex)
+                } finally {
+                    bluetoothAdapter!!.closeProfileProxy(profile, proxy)
+                }
             }
+
+            override fun onServiceDisconnected(profile: Int) {}
         }
-        BluetoothAdapter.getDefaultAdapter()
-            .getProfileProxy(context, serviceListener, BluetoothProfile.A2DP)
+        bluetoothAdapter!!.getProfileProxy(context, serviceListener, BluetoothProfile.A2DP)
     }
 
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
@@ -129,13 +163,14 @@ class Bluetooth : Permission() {
     private fun enableBluetooth(activity: Activity) {
         val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
         ActivityCompat.startActivityForResult(
-            activity, enableBtIntent,
-            FullscreenActivity.Intent_REQUEST_ENABLE_BT, null
+            activity,
+            enableBtIntent,
+            FullscreenActivity.Intent_REQUEST_ENABLE_BT,
+            null
         )
     }
 
     private fun requestPermissions(context: Context, activity: Activity) {
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             if (!hasPermissionGranted(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
                 ActivityCompat.requestPermissions(
@@ -150,7 +185,6 @@ class Bluetooth : Permission() {
 
     private fun permissions(): Array<String> =
         arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-
 
 }
 
